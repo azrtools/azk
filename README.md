@@ -10,10 +10,17 @@ make install
 
 ## Usage
 
-Create a new cluster named `mycluster01` in subscription _1234-5678_:
+To create a new cluster, first create a configuration file
+(see [example-config.json](example-config.json)). Then run
 
 ```
-azk 1234-5678 mycluster01
+azk create ./config.json --confirm
+```
+
+To delete the cluster:
+
+```
+azk delete mycluster01
 ```
 
 ## License
