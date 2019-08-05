@@ -19,6 +19,12 @@ main() {
         else
             fatal "usage: ${0} delete <name>"
         fi
+    elif [ "${1}" = "setup-aad" ]; then
+        if [ "${#}" -eq 3 ]; then
+            setup_aad "${2}" "${3}"
+        else
+            fatal "usage: ${0} setup-aad <server-name> <client-name>"
+        fi
     else
         fatal "usage: ${0} [-h] <command> [<args>]"
     fi
@@ -93,6 +99,77 @@ delete() {
     fi
 
     info "AKS cluster has been deleted: ${AKS_NAME}"
+}
+
+setup_aad() {
+    serverName="${1}"
+    clientName="${2}"
+
+    info "Creating app ${serverName} ..."
+
+    serverApplicationId=$(az ad app create \
+        --display-name "${serverName}" \
+        --query appId -o tsv) || fatal "Could not create server app!"
+
+    az ad app update --id "${serverApplicationId}" \
+        --set groupMembershipClaims=All >/dev/null ||
+        fatal "Could not update app!"
+
+    az ad sp create --id "${serverApplicationId}" >/dev/null ||
+        fatal "Could not create SP!"
+
+    serverApplicationSecret=$(az ad sp credential reset \
+        --name "${serverApplicationId}" \
+        --credential-description "AKS" \
+        --query password -o tsv) || fatal "Could not reset credentials"
+
+    az ad app permission add \
+        --id "${serverApplicationId}" \
+        --api 00000003-0000-0000-c000-000000000000 \
+        --api-permissions \
+        e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope \
+        06da0dbc-49e2-44d2-8312-53f166ab848a=Scope \
+        7ab1d382-f21e-4acd-a863-ba3e13f7da61=Role >/dev/null ||
+        fatal "Could not add permissions!"
+
+    sleep 10
+
+    az ad app permission grant --id "${serverApplicationId}" \
+        --api 00000003-0000-0000-c000-000000000000 >/dev/null ||
+        fatal "Could not grant permissions"
+
+    sleep 10
+
+    az ad app permission admin-consent --id "${serverApplicationId}" \
+        >/dev/null || fatal "Could not consent to permissions"
+
+    info "Creating app ${clientName} ..."
+
+    clientApplicationId=$(az ad app create \
+        --display-name "${clientName}" \
+        --native-app \
+        --query appId -o tsv) || fatal "Could not create client app!"
+
+    az ad sp create --id "${clientApplicationId}" >/dev/null ||
+        fatal "Could not create SP"
+
+    oAuthPermissionId=$(az ad app show --id "${serverApplicationId}" \
+        --query "oauth2Permissions[0].id" -o tsv) ||
+        fatal "Could not get permission ID"
+
+    az ad app permission add --id "${clientApplicationId}" \
+        --api "${serverApplicationId}" \
+        --api-permissions "${oAuthPermissionId}=Scope" >/dev/null ||
+        fatal "Could not add permissions"
+
+    az ad app permission grant --id "${clientApplicationId}" \
+        --api "${serverApplicationId}" >/dev/null ||
+        fatal "Could not grant permissions"
+
+    info "App registrations created successfully!"
+    info "Server: ${serverName} (${serverApplicationId})"
+    info "Secret: ${serverApplicationSecret}"
+    info "Client: ${clientName} (${clientApplicationId})"
 }
 
 read_config() {
