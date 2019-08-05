@@ -1,0 +1,3 @@
+name: "mycluster01"
+vmSize: "Standard_DS2_v2"
+vmCount: 2

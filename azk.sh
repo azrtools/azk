@@ -11,7 +11,7 @@ main() {
         if [ "${#}" -eq 2 ] || [ "${#}" -eq 3 ]; then
             create "${2}" "${3}"
         else
-            fatal "usage: ${0} create <config.json> [--confirm]"
+            fatal "usage: ${0} create <config.yaml> [--confirm]"
         fi
     elif [ "${1}" = "delete" ]; then
         if [ "${#}" -eq 2 ]; then
@@ -173,44 +173,42 @@ setup_aad() {
 }
 
 read_config() {
-    if ! config="$(cat -- "${1}")"; then
-        fatal "Could not read configuration file: ${1}"
+    aadTenantId=""
+    aadServerAppId=""
+    aadServerAppSecret=""
+    aadClientAppId=""
+    aadGroupId=""
+
+    if [ "${1}" = "-" ]; then
+        read_config_lines
+    else
+        read_config_lines <"${1}"
     fi
 
-    aksName="$(get_config "name" "")"
+    aksName="${name}"
     if [ -z "${aksName}" ]; then
         fatal "Invalid configuration file: Missing field 'name'"
     fi
 
-    subscription="$(get_config "subscription" "")"
     if [ -z "${subscription}" ]; then
         subscription="$(az account show | jq -r .id)"
     fi
 
-    aksResName="$(get_config "nodeResourceGroup" "${aksName}-res")"
-    location="$(get_config "location" "westeurope")"
+    aksResName="${nodeResourceGroup:-${aksName}-res}"
+    location="${location:-westeurope}"
 
-    vmSize="$(get_config "vmSize" "Standard_DS2_v2")"
-    vmCount="$(get_config "vmCount" "3")"
-
-    aadTenantId="$(get_config "aadTenantId" "")"
-    aadServerAppId="$(get_config "aadServerAppId" "")"
-    aadServerAppSecret="$(get_config "aadServerAppSecret" "")"
-    aadClientAppId="$(get_config "aadClientAppId" "")"
-    aadGroupId="$(get_config "aadGroupId" "")"
+    vmSize="${vmSize:-Standard_DS2_v2}"
+    vmCount="${vmCount:-1}"
 }
 
-get_config() {
-    field="${1}"
-    default="${2}"
-    if ! value="$(echo "${config}" | jq -r ".${field} // empty")"; then
-        fatal "Could not read field: ${field}"
-    fi
-    if [ -n "${value}" ]; then
-        echo "${value}"
-    else
-        echo "${default}"
-    fi
+read_config_lines() {
+    while IFS= read -r line; do
+        key="$(echo "${line}" | sed -En 's/^([a-z][a-zA-Z0-9]+):.+$/\1/p')"
+        val="$(echo "${line}" | sed -En "s/^${key}: +('([^']*)'|\"([^\"]*)\"|(.*))\$/\\2\\3\\4/p")"
+        if [ -n "${key}" ] && [ -n "${val}" ]; then
+            eval "$key"=\"\$val\"
+        fi
+    done
 }
 
 set_tags() {
