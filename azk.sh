@@ -132,13 +132,13 @@ setup_aad() {
         7ab1d382-f21e-4acd-a863-ba3e13f7da61=Role >/dev/null ||
         fatal "Could not add permissions!"
 
-    sleep 10
+    sleep 30
 
     az ad app permission grant --id "${serverApplicationId}" \
         --api 00000003-0000-0000-c000-000000000000 >/dev/null ||
         fatal "Could not grant permissions"
 
-    sleep 10
+    sleep 30
 
     az ad app permission admin-consent --id "${serverApplicationId}" \
         >/dev/null || fatal "Could not consent to permissions"
