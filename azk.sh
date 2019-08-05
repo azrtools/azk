@@ -148,6 +148,7 @@ setup_aad() {
     clientApplicationId=$(az ad app create \
         --display-name "${clientName}" \
         --native-app \
+        --reply-urls "http://localhost" \
         --query appId -o tsv) || fatal "Could not create client app!"
 
     az ad sp create --id "${clientApplicationId}" >/dev/null ||
@@ -318,7 +319,8 @@ apply_clusterrolebinding() {
         --subscription "${subscription}" \
         --resource-group "${aksName}" \
         --name "${aksName}" \
-        --path "${kubeconfigFile}" --admin
+        --file "${kubeconfigFile}" --admin ||
+        fatal "Could not get credentials!"
     echo "apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
