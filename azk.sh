@@ -31,11 +31,11 @@ main() {
 }
 
 list() {
-    ACCOUNT="$(az account show)"
-    SUBSCRIPTION_NAME="$(echo "${ACCOUNT}" | jq -r .name)"
-    SUBSCRIPTION_ID="$(echo "${ACCOUNT}" | jq -r .id)"
+    account="$(az account show)"
+    subscriptionName="$(echo "${account}" | jq -r .name)"
+    subscriptionId="$(echo "${account}" | jq -r .id)"
 
-    echo "${SUBSCRIPTION_NAME} (${SUBSCRIPTION_ID})"
+    echo "${subscriptionName} (${subscriptionId})"
 
     az aks list | jq -r .[].name
 }
@@ -45,11 +45,11 @@ create() {
 
     check_az_extension "aks-preview"
 
-    echo "Subscription: ${SUBSCRIPTION}"
-    echo "Name: ${AKS_NAME}"
-    echo "Node resource group: ${AKSRES_NAME}"
-    echo "VM size: ${VM_SIZE}"
-    echo "VM count: ${VM_COUNT}"
+    echo "Subscription: ${subscription}"
+    echo "Name: ${aksName}"
+    echo "Node resource group: ${aksResName}"
+    echo "VM size: ${vmSize}"
+    echo "VM count: ${vmCount}"
 
     if [ "${2}" != "--confirm" ]; then
         echo "Not creating cluster unless --confirm given"
@@ -58,47 +58,47 @@ create() {
 
     set_tags
 
-    if ! resource_group_exists "${AKS_NAME}"; then
-        create_resource_group "${AKS_NAME}"
+    if ! resource_group_exists "${aksName}"; then
+        create_resource_group "${aksName}"
     fi
 
-    if ! aks_exists "${AKS_NAME}"; then
-        if ! sp_exists "${AKS_NAME}"; then
-            create_sp "${AKS_NAME}"
+    if ! aks_exists "${aksName}"; then
+        if ! sp_exists "${aksName}"; then
+            create_sp "${aksName}"
         fi
 
-        reset_sp_password "${APP_ID}"
+        reset_sp_password "${appId}"
 
         create_aks
     fi
 
-    set_resource_group_tags "${AKSRES_NAME}"
+    set_resource_group_tags "${aksResName}"
 
-    if [ -n "${AAD_GROUP_ID}" ]; then
-        apply_clusterrolebinding "${AAD_GROUP_ID}"
+    if [ -n "${aadGroupId}" ]; then
+        apply_clusterrolebinding "${aadGroupId}"
     fi
 
-    info "Successfully created AKS cluster: ${AKS_NAME}"
+    info "Successfully created AKS cluster: ${aksName}"
 }
 
 delete() {
-    AKS_NAME="${1}"
+    aksName="${1}"
 
-    SUBSCRIPTION="$(az account show | jq -r .id)"
+    subscription="$(az account show | jq -r .id)"
 
-    if aks_exists "${AKS_NAME}"; then
-        delete_aks "${AKS_NAME}"
+    if aks_exists "${aksName}"; then
+        delete_aks "${aksName}"
     fi
 
-    if resource_group_exists "${AKS_NAME}"; then
-        delete_resource_group "${AKS_NAME}"
+    if resource_group_exists "${aksName}"; then
+        delete_resource_group "${aksName}"
     fi
 
-    if sp_exists "${AKS_NAME}"; then
-        delete_sp "${APP_ID}"
+    if sp_exists "${aksName}"; then
+        delete_sp "${appId}"
     fi
 
-    info "AKS cluster has been deleted: ${AKS_NAME}"
+    info "AKS cluster has been deleted: ${aksName}"
 }
 
 setup_aad() {
@@ -173,99 +173,100 @@ setup_aad() {
 }
 
 read_config() {
-    if ! CONFIG="$(cat "${1}")"; then
+    if ! config="$(cat -- "${1}")"; then
         fatal "Could not read configuration file: ${1}"
     fi
 
-    AKS_NAME="$(get_config "name" "")"
-    if [ -z "${AKS_NAME}" ]; then
+    aksName="$(get_config "name" "")"
+    if [ -z "${aksName}" ]; then
         fatal "Invalid configuration file: Missing field 'name'"
     fi
 
-    SUBSCRIPTION="$(get_config "subscription" "")"
-    if [ -z "${SUBSCRIPTION}" ]; then
-        SUBSCRIPTION="$(az account show | jq -r .id)"
+    subscription="$(get_config "subscription" "")"
+    if [ -z "${subscription}" ]; then
+        subscription="$(az account show | jq -r .id)"
     fi
 
-    AKSRES_NAME="$(get_config "nodeResourceGroup" "${AKS_NAME}-res")"
-    LOCATION="$(get_config "location" "westeurope")"
+    aksResName="$(get_config "nodeResourceGroup" "${aksName}-res")"
+    location="$(get_config "location" "westeurope")"
 
-    VM_SIZE="$(get_config "vmSize" "Standard_DS2_v2")"
-    VM_COUNT="$(get_config "vmCount" "3")"
+    vmSize="$(get_config "vmSize" "Standard_DS2_v2")"
+    vmCount="$(get_config "vmCount" "3")"
 
-    AAD_TENANT_ID="$(get_config "aadTenantId" "")"
-    AAD_SERVER_APP_ID="$(get_config "aadServerAppId" "")"
-    AAD_SERVER_APP_SECRET="$(get_config "aadServerAppSecret" "")"
-    AAD_CLIENT_APP_ID="$(get_config "aadClientAppId" "")"
-    AAD_GROUP_ID="$(get_config "aadGroupId" "")"
+    aadTenantId="$(get_config "aadTenantId" "")"
+    aadServerAppId="$(get_config "aadServerAppId" "")"
+    aadServerAppSecret="$(get_config "aadServerAppSecret" "")"
+    aadClientAppId="$(get_config "aadClientAppId" "")"
+    aadGroupId="$(get_config "aadGroupId" "")"
 }
 
 get_config() {
-    FIELD="${1}"
-    DEFAULT="${2}"
-    if ! VALUE="$(echo "${CONFIG}" | jq -r ".${FIELD} // empty")"; then
-        fatal "Could not read field: ${FIELD}"
+    field="${1}"
+    default="${2}"
+    if ! value="$(echo "${config}" | jq -r ".${field} // empty")"; then
+        fatal "Could not read field: ${field}"
     fi
-    if [ -n "${VALUE}" ]; then
-        echo "${VALUE}"
+    if [ -n "${value}" ]; then
+        echo "${value}"
     else
-        echo "${DEFAULT}"
+        echo "${default}"
     fi
 }
 
 set_tags() {
-    CURRENT_USER="$(az account show | jq -r .user.name)"
-    if [ -z "${CURRENT_USER}" ]; then
+    currentUser="$(az account show | jq -r .user.name)"
+    if [ -z "${currentUser}" ]; then
         fatal "Could not get current user!"
     fi
-    TAGS="Creator=${CURRENT_USER}"
+    tags="Creator=${currentUser}"
 }
 
 check_az_extension() {
     if ! az extension list | grep -q "${1}"; then
         fatal "Extension ${1} is not installed!"
+        fatal "You can install it using 'az extension add --name ${1}'"
     fi
 }
 
 resource_group_exists() {
-    az group exists --subscription "${SUBSCRIPTION}" -n "${1}" | grep -q "true"
+    az group exists --subscription "${subscription}" -n "${1}" | grep -q "true"
 }
 
 create_resource_group() {
     info "Creating group ${1} ..."
-    az group create --subscription "${SUBSCRIPTION}" --tags "${TAGS}" \
-        --location "${LOCATION}" --name "${1}" >/dev/null ||
+    az group create --subscription "${subscription}" --tags "${tags}" \
+        --location "${location}" --name "${1}" >/dev/null ||
         fatal "Could not create group!"
 }
 
 delete_resource_group() {
     info "Deleting group ${1} ..."
-    az group delete --yes --subscription "${SUBSCRIPTION}" \
+    az group delete --yes --subscription "${subscription}" \
         --name "${1}" >/dev/null ||
         fatal "Could not delete group!"
 }
 
 set_resource_group_tags() {
-    az group update --subscription "${SUBSCRIPTION}" -n "${1}" \
-        --tags "${TAGS}" >/dev/null ||
+    az group update --subscription "${subscription}" -n "${1}" \
+        --tags "${tags}" >/dev/null ||
         fatal "Could not set tags!"
 }
 
 sp_exists() {
-    APP_ID="$(az ad sp list --filter "DisplayName eq '${1}'" --query "[0].appId" | tr -d '"')"
-    echo "${APP_ID}" | grep -q "."
+    appId="$(az ad sp list --filter "DisplayName eq '${1}'" --query "[0].appId" | tr -d '"')"
+    echo "${appId}" | grep -q "."
 }
 
 create_sp() {
     info "Creating service principal ${1} ..."
-    if ! APP_ID="$(az ad sp create-for-rbac --skip-assignment -n "${1}" | jq -r .appId)"; then
+    if ! appId="$(az ad sp create-for-rbac --skip-assignment -n "${1}" | jq -r .appId)"; then
         fatal "Could not create service principal!"
     fi
 }
 
 reset_sp_password() {
     info "Resetting service principal password for ${1} ..."
-    if ! APP_PASSWORD="$(az ad sp credential reset -n "${1}" \
+    if ! appPassword="$(az ad sp credential reset -n "${1}" \
         --end-date 2099-12-31 --query 'password' | tr -d '"')"; then
         fatal "Could not reset password!"
     fi
@@ -279,27 +280,27 @@ delete_sp() {
 }
 
 aks_exists() {
-    az aks show --subscription "${SUBSCRIPTION}" \
+    az aks show --subscription "${subscription}" \
         --resource-group "${1}" --name "${1}" -o none 2>/dev/null
 }
 
 create_aks() {
-    info "Creating AKS cluster ${AKS_NAME} ..."
+    info "Creating AKS cluster ${aksName} ..."
     az aks create --verbose \
-        --name "${AKS_NAME}" \
-        --subscription "${SUBSCRIPTION}" \
-        --location "${LOCATION}" \
-        --resource-group "${AKS_NAME}" \
-        --node-resource-group "${AKSRES_NAME}" \
-        --service-principal "${APP_ID}" \
-        --client-secret "${APP_PASSWORD}" \
-        --aad-tenant-id "${AAD_TENANT_ID}" \
-        --aad-server-app-id "${AAD_SERVER_APP_ID}" \
-        --aad-server-app-secret "${AAD_SERVER_APP_SECRET}" \
-        --aad-client-app-id "${AAD_CLIENT_APP_ID}" \
-        --node-vm-size "${VM_SIZE}" \
-        --node-count "${VM_COUNT}" \
-        --tags "${TAGS}" \
+        --name "${aksName}" \
+        --subscription "${subscription}" \
+        --location "${location}" \
+        --resource-group "${aksName}" \
+        --node-resource-group "${aksResName}" \
+        --service-principal "${appId}" \
+        --client-secret "${appPassword}" \
+        --aad-tenant-id "${aadTenantId}" \
+        --aad-server-app-id "${aadServerAppId}" \
+        --aad-server-app-secret "${aadServerAppSecret}" \
+        --aad-client-app-id "${aadClientAppId}" \
+        --node-vm-size "${vmSize}" \
+        --node-count "${vmCount}" \
+        --tags "${tags}" \
         --no-ssh-key >/dev/null ||
         fatal "Could not create AKS cluster!"
 }
@@ -308,18 +309,18 @@ delete_aks() {
     info "Deleting AKS cluster ${1} ..."
     az aks delete \
         --name "${1}" \
-        --subscription "${SUBSCRIPTION}" \
+        --subscription "${subscription}" \
         --resource-group "${1}" ||
         fatal "Could not delete AKS cluster!"
 }
 
 apply_clusterrolebinding() {
-    KUBECONFIG_FILE=".kubeconfig-$(date +%Y%m%d%H%M%S).json"
+    kubeconfigFile=".kubeconfig-$(date +%Y%m%d%H%M%S).json"
     az aks get-credentials \
-        --subscription "${SUBSCRIPTION}" \
-        --resource-group "${AKS_NAME}" \
-        --name "${AKS_NAME}" \
-        --path "${KUBECONFIG_FILE}" --admin
+        --subscription "${subscription}" \
+        --resource-group "${aksName}" \
+        --name "${aksName}" \
+        --path "${kubeconfigFile}" --admin
     echo "apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -331,8 +332,8 @@ roleRef:
 subjects:
 - apiGroup: rbac.authorization.k8s.io
   kind: Group
-  name: $1" | kubectl --kubeconfig "${KUBECONFIG_FILE}" apply -f -
-    rm -f "${KUBECONFIG_FILE}"
+  name: $1" | kubectl --kubeconfig "${kubeconfigFile}" apply -f -
+    rm -f "${kubeconfigFile}"
 }
 
 info() {
